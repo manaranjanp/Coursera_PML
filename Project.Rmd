@@ -1,0 +1,89 @@
+## Overview
+
+Objective of this project is to analyze the activity data collected from various devices such as Jawbone Up, Nike FuelBand, and Fitbit and build a mode, which can predict the manner in which participants did the exercise. 
+
+A dataset which captures all activities from a set of 6 participants is available [here](http://groupware.les.inf.puc-rio.br/har). As per requirement of the project, we will use only data from accelerometers on the belt, forearm, arm, and dumbell of the participants to build and train this model.
+
+## Data Preprocessing 
+
+The R package caret will be used for building and testing the model. First load the data from the training data set.
+
+```{r, results='hide'}
+library( caret )
+```
+
+```{r, cache= TRUE}
+pmltrain <- read.csv( "pml-training.csv" )
+```
+
+This dataset has ```r nrow(pmltrain)``` observations and each observation has ```r ncol(pmltrain)``` features. But the dataset has got lots of NA values, which can not be used for builidng the model. So, first we will remove all the columns that have NA values.
+
+```{r}
+pmlComplete <- pmltrain[,!colSums(is.na(pmltrain)) != 0 ]
+```
+
+From the remaining columns, we will retain only those columns which have captured data from **accelerometers from on the belt, forearm, arm, and dumbell of participants** (as per the project requirement). We will retain for all the columns which start with **accel_** and retain the outcome or classification column **classe**.
+
+```{r}
+cols <- colnames( pmltrain )
+cols <- cols[grep("^accel_",cols)]
+allcols <- c( cols, "classe" )
+pml <- pmlComplete[, allcols ]
+```
+
+We will convert the dataset into two datasets training and testing containing 75% and 25% observations respectively so that we can verify the accuracy and out of sample error of the model using test data set.
+
+```{r}
+inTrain = createDataPartition(pml$classe, p = 0.75, list=FALSE )
+training = pml[ inTrain,]
+testing = pml[-inTrain,]
+```
+
+## Model Building
+
+We will use random forest to build the model as it provides better accuracy and estimates of what variables are important in the classification. We will also use 10 fold cross validations to tune the parameters. 
+
+```{r, results='hide'}
+modControl <- trainControl(method = "cv", number = 10, allowParallel = TRUE, verboseIter = TRUE)
+modFit <- train( classe ~ ., method = "rf", data = training, trControl = modControl )
+```
+
+Let's look at the model parameters.
+
+```{r}
+modFit
+```
+
+From cross validation, the model seems to have an maximum accuracy of ```r modFit$results[2,2]```
+
+## Model Testing
+
+Now we will test the model against the testing dataset we created and find out out of sample error.
+
+```{r}
+predictions <- predict(modFit, newdata=testing)
+cm  <- confusionMatrix(predictions,testing$classe)
+cm
+```
+
+The model has an out of sample estimate of accuracy as ```r cm$overall[[1]]``` and hence estimated __out of sample error__ is ```r 1 - cm$overall[[1]]```
+
+## Predicting using the Model
+
+Now we will use the model to predict the test data set given. 
+
+```{r}
+pmltest <- read.csv( "pml-testing.csv" )
+pmlt <- pmltest[ , cols ]
+
+pml_write_files = function(x){
+        n = length(x)
+        for(i in 1:n){
+                filename = paste0("problem_id_",i,".txt")
+                write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+        }
+}
+
+tpredictions <- predict(modFit, newdata=pmlt)
+pml_write_files( tpredictions )
+```
